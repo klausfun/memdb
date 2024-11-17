@@ -2,10 +2,10 @@
 #include <vector>
 #include <string>
 #include <cctype>
-#include "src/db.h"
+#include "src/db.hpp"
 
 int main() {
-    std::string input_table = "  create   table   users_admin$key   (  { key ,  autoincrement  }    id   :   int32 ,   {  unique }   login  :   string[32] ,   password_hash  :   bytes[8]  ,  is_admin  :   bool   =   false  )";
+    std::string input_table = "  create   table   users_admin$key   (  { key ,  autoincrement  }    id   :   int32 ,   {  unique }   login  :   string[32] ,   password_hash  :   bytes[8]  ,  is_admin  :   bool   =   true  )";
     std::string input_insert = "insert (\n"
                          "is_admin = true,\n"
                          "login = \"admin\",\n"

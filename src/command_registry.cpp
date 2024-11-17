@@ -1,4 +1,4 @@
-#include "command_registry.h"
+#include "command_registry.hpp"
 
 void CommandRegistry::register_command(const std::string& command_name, CommandFactory factory) {
     registry[command_name] = factory;

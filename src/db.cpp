@@ -2,7 +2,7 @@
 #include <iostream>
 #include <memory>
 #include <regex>
-#include "db.h"
+#include "db.hpp"
 
 Database::Database() {
     command_registry.register_command("create table", []() {

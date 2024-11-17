@@ -3,10 +3,10 @@
 #include <unordered_map>
 #include <memory>
 #include <vector>
-#include "table.h"
-#include "result.h"
-#include "parser.h"
-#include "command_registry.h"
+#include "table.hpp"
+#include "result.hpp"
+#include "parser.hpp"
+#include "command_registry.hpp"
 
 class Database {
 public:

@@ -3,7 +3,7 @@
 #include <unordered_map>
 #include <memory>
 #include <functional>
-#include "command.h"
+#include "command.hpp"
 
 class CommandRegistry {
 public:

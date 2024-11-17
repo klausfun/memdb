@@ -1,17 +1,17 @@
 #pragma once
 #include <string>
-#include "row.h"
 #include <vector>
 #include <iterator>
+#include "types.hpp"
 
 class Result {
 public:
-    void add_row(const Row& row);
+//    void add_row(const std::vector<Value>& row);
     bool is_ok() const;
     std::string get_error();
 
-    using iterator = std::vector<Row>::iterator;
-    using const_iterator = std::vector<Row>::const_iterator;
+    using iterator = std::vector<std::vector<DataType::Value>>::iterator;
+    using const_iterator = std::vector<std::vector<DataType::Value>>::const_iterator;
 
     iterator begin() { return rows.begin(); }
     iterator end() { return rows.end(); }
@@ -20,6 +20,6 @@ public:
 
 private:
     bool success = true;
-    std::vector<Row> rows;
+    std::vector<std::vector<DataType::Value>> rows;
     std::string error;
 };

@@ -1,7 +1,8 @@
 #pragma once
 #include <string>
 #include <vector>
-#include "result.h"
+#include "result.hpp"
+#include "column.hpp"
 
 class Database;
 class Token;
@@ -15,6 +16,8 @@ public:
 class CreateTableCommand : public Command {
 public:
     Result execute(Database& db, const std::vector<Token>& tokens) override;
+private:
+    std::vector<Column> parseColumns(const std::vector<Token>& tokens);
 };
 
 class InsertCommand : public Command {

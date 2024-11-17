@@ -1,8 +1,8 @@
-#include "result.h"
+#include "result.hpp"
 
-void Result::add_row(const Row& row) {
-    rows.push_back(row);
-}
+//void Result::add_row(const std::vector<Value>& row) {
+//    rows.push_back(row);
+//}
 
 bool Result::is_ok() const {
     return success;

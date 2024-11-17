@@ -1,6 +1,6 @@
 #include <iostream>
 #include <cctype>
-#include "parser.h"
+#include "parser.hpp"
 
 void Tokenizer::printTokens(const std::vector<Token>& tokens) {
     for (const auto& token : tokens) {
