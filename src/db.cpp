@@ -83,6 +83,7 @@ std::string to_lower(const std::string& str) {
 }
 
 Result Database::execute(const std::string& query) {
+    Tokenizer tokenizer;
     auto tokens = tokenizer.tokenize(query);
     if (tokens.empty()) {
 //        return Result::error("Empty query");

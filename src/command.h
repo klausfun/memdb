@@ -1,9 +1,10 @@
 #pragma once
 #include <string>
+#include <vector>
 #include "result.h"
 
-class Token;
 class Database;
+class Token;
 
 class Command {
 public:

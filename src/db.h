@@ -26,5 +26,4 @@ private:
     friend class Command;
     std::unordered_map<std::string, std::shared_ptr<Table>> tables;
     CommandRegistry command_registry;
-    Tokenizer tokenizer;
 };
