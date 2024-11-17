@@ -1,24 +1,33 @@
 #include <iostream>
+#include <vector>
+#include <string>
+#include <cctype>
 #include "src/db.h"
-#include <regex>
-
-std::string sanitize_query(const std::string& query) {
-    std::string sanitized = query;
-    std::regex ws_re("\\s+");
-    sanitized = std::regex_replace(sanitized, ws_re, " ");
-
-    return sanitized;
-}
 
 int main() {
+    std::string input_table = "  create   table   users_admin$key   (  { key ,  autoincrement  }    id   :   int32 ,   {  unique }   login  :   string[32] ,   password_hash  :   bytes[8]  ,  is_admin  :   bool   =   false  )";
+    std::string input_insert = "insert (\n"
+                         "is_admin = true,\n"
+                         "login = \"admin\",\n"
+                         "password_hash = 0x0000000000000000\n"
+                         ") to users";
+    std::string input_select = "select id, login from users where is_admin || id < 10";
+    std::string input_update = "update users set login = login + \"_deleted\", is_admin = false where\n"
+                         "password_hash < 0x00000000ffffffff";
+    std::string input_delete = "delete users where |login| % 2 = 0";
+    std::string input_index = "create ordered index on users by login";
+
+    Tokenizer tokenizer;
+    std::vector<Token> tokens = tokenizer.tokenize(input_table);
+    tokenizer.printTokens(tokens);
+
     Database db;
-//    std::string query = "Create table users ({key, autoincrement} id :\n"
-//                        "int32, {unique} login: string[32], password_hash: bytes[8], is_admin:\n"
-//                        "bool = false)";
-//    auto result = db.execute(query);
-    std::string query = "  create   table   users   (  { key ,  autoincrement  }    id   :   int32 ,   {  unique }   login  :   string[32] ,   password_hash  :   bytes[8]  ,  is_admin  :   bool   =   false  )";
-    query = sanitize_query(query);
-    std::cout << query << std::endl;
+    db.execute(input_table);
+    db.execute(input_insert);
+    db.execute(input_select);
+    db.execute(input_update);
+    db.execute(input_delete);
+    db.execute(input_index);
 
     return 0;
 }

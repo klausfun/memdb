@@ -8,6 +8,7 @@ class Result {
 public:
     void add_row(const Row& row);
     bool is_ok() const;
+    std::string get_error();
 
     using iterator = std::vector<Row>::iterator;
     using const_iterator = std::vector<Row>::const_iterator;
@@ -20,4 +21,5 @@ public:
 private:
     bool success = true;
     std::vector<Row> rows;
+    std::string error;
 };

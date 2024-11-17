@@ -2,26 +2,41 @@
 #include <string>
 #include "result.h"
 
+class Token;
 class Database;
 
 class Command {
 public:
     virtual ~Command() = default;
-    virtual Result execute(Database& db, const std::string& query) = 0;
+    virtual Result execute(Database& db, const std::vector<Token>& tokens) = 0;
 };
 
-class CreateCommand : public Command {
+class CreateTableCommand : public Command {
 public:
-    Result execute(Database& db, const std::string& query) override;
+    Result execute(Database& db, const std::vector<Token>& tokens) override;
 };
 
 class InsertCommand : public Command {
 public:
-    Result execute(Database& db, const std::string& query) override;
+    Result execute(Database& db, const std::vector<Token>& tokens) override;
 };
 
 class SelectCommand : public Command {
 public:
-    Result execute(Database& db, const std::string& query) override;
+    Result execute(Database& db, const std::vector<Token>& tokens) override;
 };
 
+class UpdateCommand : public Command {
+public:
+    Result execute(Database& db, const std::vector<Token>& tokens) override;
+};
+
+class DeleteCommand : public Command {
+public:
+    Result execute(Database& db, const std::vector<Token>& tokens) override;
+};
+
+class CreateIndexCommand : public Command {
+public:
+    Result execute(Database& db, const std::vector<Token>& tokens) override;
+};
