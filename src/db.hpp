@@ -6,7 +6,10 @@
 #include "table.hpp"
 #include "result.hpp"
 #include "parser.hpp"
-#include "command_registry.hpp"
+#include "command/command_registry.hpp"
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 class Database {
 public:
@@ -19,11 +22,19 @@ public:
     Database& operator=(Database&&) = default;
 
     Result execute(const std::string& query);
-    void load_from_file(std::ifstream& file);
-    void save_to_file(std::ofstream& file) const;
+    void save_to_json(const std::string& filename);
+    void load_from_json(const std::string& filename);
+//    void load_from_file(std::ifstream& file);
+//    void save_to_file(std::ofstream& file) const;
 
 private:
+    friend class CreateTableCommand;
+    friend class InsertCommand;
     friend class Command;
+
+    void createTable(const std::string& name, const std::vector<Column>& columns);
+    std::shared_ptr<Table> getTable(const std::string& name);
+
     std::unordered_map<std::string, std::shared_ptr<Table>> tables;
     CommandRegistry command_registry;
 };

@@ -6,7 +6,6 @@
 
 class Result {
 public:
-//    void add_row(const std::vector<Value>& row);
     bool is_ok() const;
     std::string get_error();
 

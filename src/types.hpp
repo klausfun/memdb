@@ -8,6 +8,7 @@
 class DataType {
 public:
     using Value = std::variant<
+            std::monostate,
             int32_t,
             std::string,
             std::vector<uint8_t>,

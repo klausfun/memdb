@@ -5,15 +5,51 @@
 Table::Table(const std::string& name, const std::vector<Column>& columns)
     : name_(name), columns_(columns) {}
 
-Table Table::insert_row() const {}
+void Table::insert_row(const std::unordered_map<std::string, DataType::Value>& values) {
+    std::vector<DataType::Value> row;
+    row.reserve(columns_.size());
 
-Table Table::update_rows() const {}
+    // Проходим по колонкам в правильном порядке
+    for (const auto& column : columns_) {
+        auto it = values.find(column.name);
 
-Table Table::delete_rows() const {}
+        if (it != values.end()) {
+            // Используем предоставленное значение
+            row.push_back(it->second);
+        }
+        else if (column.is_autoincrement) {
+            // Для autoincrement используем следующее значение
+            row.push_back(auto_increment_value++);
+        }
+        else if (!std::holds_alternative<std::monostate>(column.default_value)) {
+            // Используем значение по умолчанию
+            row.push_back(column.default_value);
+        }
+        else {
+            // Если нет значения и нет значения по умолчанию, используем null
+            row.push_back(std::monostate{});
+        }
+    }
 
-std::vector<std::vector<DataType::Value>> Table::select_rows() const {}
+    // Добавляем строку, используя существующий метод
+    add_row(row);
+}
 
-Table Table::create_index(const std::string& column_name) const {}
+Table Table::update_rows() const {
+    return Table("", std::vector<Column>{});
+}
+
+Table Table::delete_rows() const {
+    return Table("", std::vector<Column>{});
+}
+
+std::vector<std::vector<DataType::Value>> Table::select_rows() const {
+    return std::vector<std::vector<DataType::Value>>{};
+}
+
+Table Table::create_index(const std::string& column_name) const {
+    return Table("", std::vector<Column>{});
+}
 
 //bool Table::has_index(const std::string& column_name) const {
 //    return indexes_.find(column_name) != indexes_.end();
@@ -43,4 +79,6 @@ size_t Table::get_column_index(const std::string& name) const {
     throw std::runtime_error("Column not found: " + name);
 }
 
-DataType::Value Table::get_default_value(const Column& column) const {}
+DataType::Value Table::get_default_value(const Column& column) const {
+    return DataType::Value{};
+}
