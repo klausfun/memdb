@@ -7,13 +7,6 @@
 #include "../db.hpp"
 #include "../rpn.hpp"
 
-std::string trim(const std::string& str) {
-    size_t first = str.find_first_not_of(" \t\n\r");
-    if (first == std::string::npos) return "";
-    size_t last = str.find_last_not_of(" \t\n\r");
-    return str.substr(first, last - first + 1);
-}
-
 std::pair<bool, SelectData> SelectCommand::parseSelectQuery(const std::string& query) {
     const std::regex selectPattern(
             R"(select\s+(.*?)\s+from\s+(\w+)(?:\s+where\s+(.*))?)",
@@ -93,16 +86,6 @@ std::pair<bool, SelectData> SelectCommand::parseSelectQuery(const std::string& q
     }
 
     return {true, data};
-}
-
-size_t findColumnIndex(const std::string& name, const std::vector<Column>& columns) {
-    for (size_t i = 0; i < columns.size(); ++i) {
-        if (columns[i].name == name) {
-            return i;
-        }
-    }
-
-    throw std::runtime_error("Column not found: " + name);
 }
 
 Result SelectCommand::execute(Database& db, const std::vector<std::string>& tokens, const std::string& query) {

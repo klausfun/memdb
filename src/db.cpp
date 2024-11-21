@@ -59,7 +59,6 @@ void Database::save_to_json(const std::string& filename) {
             column["is_unique"] = col.is_unique;
             column["is_autoincrement"] = col.is_autoincrement;
 
-            // Обработка значения по умолчанию
             if (!std::holds_alternative<std::monostate>(col.default_value)) {
                 if (std::holds_alternative<int32_t>(col.default_value)) {
                     column["default_value"] = std::get<int32_t>(col.default_value);
@@ -86,7 +85,6 @@ void Database::save_to_json(const std::string& filename) {
         }
         table_json["columns"] = columns_json;
 
-        // Сохраняем данные
         json rows_json;
         for (const auto& row : table->get_rows()) {
             json row_json;
@@ -133,7 +131,6 @@ void Database::load_from_json(const std::string& filename) {
     tables.clear();
 
     for (const auto& [table_name, table_json] : j.items()) {
-        // Загружаем колонки
         std::vector<Column> columns;
         for (const auto& col_json : table_json["columns"]) {
             Column col;
@@ -170,7 +167,6 @@ void Database::load_from_json(const std::string& filename) {
             columns.push_back(col);
         }
 
-        // Создаем таблицу
         auto table = std::make_shared<Table>(table_name, columns);
 
         std::string auto_increment_column;
@@ -181,7 +177,6 @@ void Database::load_from_json(const std::string& filename) {
             }
         }
 
-        // Загружаем данные
         int32_t max_id = 0;
         for (const auto& row_json : table_json["rows"]) {
             std::vector<DataType::Value> row;
@@ -235,9 +230,7 @@ Result Database::execute(const std::string& query) {
     Tokenizer tokenizer;
     auto tokens = tokenizer.tokenize(query);
     if (tokens.empty()) {
-//        return Result::error("Empty query");
-        std::cerr << "Empty query" << std::endl;
-        return Result{};
+        return Result("Empty query");
     }
 
     std::string keyword = to_lower(tokens[0]);
@@ -252,16 +245,13 @@ Result Database::execute(const std::string& query) {
                 return Result{};
             }
         } else {
-//            return Result::error("Empty query");
-            std::cerr << "Empty query" << std::endl;
-            return Result{};
+            return Result("Empty query");
         }
     }
 
     auto command = command_registry.get_command(keyword);
     if (!command) {
-//        return Result::error("Unknown command: " + keyword);
-        return Result{};
+        return Result("Unknown command: " + keyword);
     }
 
     return command->execute(*this, tokens, query);

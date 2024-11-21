@@ -24,8 +24,9 @@ public:
     }
 
     void insert_row(const std::unordered_map<std::string, DataType::Value>& values);
-    Table update_rows() const;
-    Table delete_rows() const;
+    void update_value(size_t row_idx, size_t col_idx, const DataType::Value& value);
+    void delete_rows();
+    void set_rows(const std::vector<std::vector<DataType::Value>>& new_rows);
     std::vector<std::vector<DataType::Value>> select_rows() const;
     Table create_index(const std::string& column_name) const;
 

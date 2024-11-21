@@ -57,15 +57,12 @@ std::pair<bool, std::vector<Column>> CreateTableCommand::parseCreateTableQuery(c
 
         if (columnMatches[1].matched) {
             std::string attrs = columnMatches[1].str();
-            // Разбиваем строку атрибутов по запятым
             std::regex attr_splitter(R"(\s*,\s*)");
             std::sregex_token_iterator iter(attrs.begin(), attrs.end(), attr_splitter, -1);
             std::sregex_token_iterator end;
 
-            // Проверяем каждый атрибут
             for (; iter != end; ++iter) {
                 std::string attr = iter->str();
-                // Удаляем лишние пробелы
                 attr.erase(0, attr.find_first_not_of(" \t\n\r"));
                 attr.erase(attr.find_last_not_of(" \t\n\r") + 1);
 

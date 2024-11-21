@@ -24,8 +24,6 @@ public:
     Result execute(const std::string& query);
     void save_to_json(const std::string& filename);
     void load_from_json(const std::string& filename);
-//    void load_from_file(std::ifstream& file);
-//    void save_to_file(std::ofstream& file) const;
 
 private:
     friend class CreateTableCommand;

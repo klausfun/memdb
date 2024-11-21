@@ -9,38 +9,33 @@ void Table::insert_row(const std::unordered_map<std::string, DataType::Value>& v
     std::vector<DataType::Value> row;
     row.reserve(columns_.size());
 
-    // Проходим по колонкам в правильном порядке
     for (const auto& column : columns_) {
         auto it = values.find(column.name);
 
         if (it != values.end()) {
-            // Используем предоставленное значение
             row.push_back(it->second);
-        }
-        else if (column.is_autoincrement) {
-            // Для autoincrement используем следующее значение
+        } else if (column.is_autoincrement) {
             row.push_back(auto_increment_value++);
-        }
-        else if (!std::holds_alternative<std::monostate>(column.default_value)) {
-            // Используем значение по умолчанию
+        } else if (!std::holds_alternative<std::monostate>(column.default_value)) {
             row.push_back(column.default_value);
-        }
-        else {
-            // Если нет значения и нет значения по умолчанию, используем null
+        } else {
             row.push_back(std::monostate{});
         }
     }
 
-    // Добавляем строку, используя существующий метод
     add_row(row);
 }
 
-Table Table::update_rows() const {
-    return Table("", std::vector<Column>{});
+void Table::update_value(size_t row_idx, size_t col_idx, const DataType::Value& value) {
+    rows_[row_idx][col_idx] = value;
 }
 
-Table Table::delete_rows() const {
-    return Table("", std::vector<Column>{});
+void Table::delete_rows() {
+    rows_.clear();
+}
+
+void Table::set_rows(const std::vector<std::vector<DataType::Value>>& new_rows) {
+    rows_ = new_rows;
 }
 
 std::vector<std::vector<DataType::Value>> Table::select_rows() const {
@@ -60,7 +55,6 @@ bool Table::validate_row(const std::unordered_map<std::string, DataType::Value>&
         if (!column_exists(name)) {
             return false;
         }
-        // Здесь можно добавить дополнительные проверки типов данных
     }
     return true;
 }

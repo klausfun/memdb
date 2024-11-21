@@ -252,14 +252,12 @@ DataType::Value RPNCalculator::calculateBinary(const std::string &op, const Data
 }
 
 void printStack(const std::stack<DataType::Value>& stack) {
-    // Создаем копию стека, так как оригинальный будет уничтожен при выводе
     auto temp_stack = stack;
 
     std::cerr << "Stack (top to bottom): ";
     while (!temp_stack.empty()) {
         const auto& val = temp_stack.top();
 
-        // Выводим значение в зависимости от типа
         if (std::holds_alternative<int32_t>(val)) {
             std::cerr << std::get<int32_t>(val);
         }
@@ -307,6 +305,20 @@ bool RPNCalculator::calculate(const std::vector<std::string>& rpn_tokens,
                 stack.pop();
                 stack.push(calculateBinary(token, left, right));
             }
+        } else if (token.substr(0, 2) == "0x") {
+            std::vector<uint8_t> bytes;
+            std::string hex = token.substr(2);
+
+            for (size_t i = 0; i < hex.length(); i += 2) {
+                if (i + 1 >= hex.length()) {
+                    throw std::runtime_error("Invalid hex string length");
+                }
+
+                std::string byte = hex.substr(i, 2);
+                bytes.push_back(std::stoi(byte, nullptr, 16));
+            }
+
+            stack.push(bytes);
         } else if (isNumber(token)) {
             stack.push(std::stoi(token));
         }
