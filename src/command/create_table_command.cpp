@@ -122,7 +122,7 @@ std::pair<bool, std::vector<Column>> CreateTableCommand::parseCreateTableQuery(c
     return {true, columns};
 }
 
-Result CreateTableCommand::execute(Database& db, const std::vector<Token>& tokens, const std::string& query) {
+Result CreateTableCommand::execute(Database& db, const std::vector<std::string>& tokens, const std::string& query) {
     std::cout << "Executing Create Table command:\n" << std::endl;
 
     auto [success, columns] = parseCreateTableQuery(query);
@@ -130,7 +130,7 @@ Result CreateTableCommand::execute(Database& db, const std::vector<Token>& token
         throw std::runtime_error("Invalid CREATE TABLE syntax");
     }
 
-    std::string table_name = tokens[2].value;
+    std::string table_name = tokens[2];
     db.createTable(table_name, columns);
 
     return Result{};

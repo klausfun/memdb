@@ -60,7 +60,6 @@ std::pair<bool, InsertData> InsertCommand::parseInsertQuery(const std::string& q
         }
     }
 
-    // Парсим значения
     for (const auto& part : valueParts) {
         std::string trimmed = part;
         trimmed.erase(0, trimmed.find_first_not_of(" \t\n\r"));
@@ -139,116 +138,7 @@ DataType::Value InsertCommand::parseValue(const std::string& value_str, const Da
     }
 }
 
-//Result InsertCommand::execute(Database& db, const std::vector<Token>& tokens, const std::string& query) {
-//    std::cout << "Executing Insert command:\n";
-//
-//    auto [success, data] = parseInsertQuery(query);
-//    if (!success) {
-//        throw std::runtime_error("Invalid INSERT syntax");
-//    }
-//
-//    auto table = db.getTable(data.table_name);
-//    if (!table) {
-//        throw std::runtime_error("Table '" + data.table_name + "' not found");
-//    }
-//
-//    const auto& columns = table->get_columns();
-//    std::unordered_map<std::string, DataType::Value> values;
-//
-//    int32_t max_id = 0;
-//    for (const auto& row : table->get_rows()) {
-//        for (size_t i = 0; i < columns.size(); ++i) {
-//            if (columns[i].is_autoincrement && std::holds_alternative<int32_t>(row[i])) {
-//                max_id = std::max(max_id, std::get<int32_t>(row[i]));
-//            }
-//        }
-//    }
-//
-//    if (data.is_named_format) {
-//        // Именованный формат (name = value)
-//        for (const auto& [name, value_str] : data.values) {
-//            auto it = std::find_if(columns.begin(), columns.end(),
-//                                   [&name](const Column& col) { return col.name == name; });
-//
-//            if (it == columns.end()) {
-//                throw std::runtime_error("Column '" + name + "' not found");
-//            }
-//
-//            if (!it->is_autoincrement) {
-//                values[name] = parseValue(value_str, it->type);
-//            }
-//        }
-//    } else {
-//        // Простой формат (value1, value2, value3)
-//        size_t value_idx = 0;
-//        size_t col_idx = 0;
-//
-//        // Пропускаем autoincrement колонки
-//        while (col_idx < columns.size() && columns[col_idx].is_autoincrement) {
-//            col_idx++;
-//        }
-//
-//        // Сопоставляем значения с колонками
-//        while (value_idx < data.values.size() && col_idx < columns.size()) {
-//            const auto& value_str = data.values[value_idx].second;
-//            if (!value_str.empty()) {
-//                values[columns[col_idx].name] = parseValue(value_str, columns[col_idx].type);
-//            }
-//            value_idx++;
-//
-//            // Переходим к следующей не-autoincrement колонке
-//            do {
-//                col_idx++;
-//            } while (col_idx < columns.size() && columns[col_idx].is_autoincrement);
-//        }
-//
-//        // Проверяем, что все значения были использованы
-//        if (value_idx < data.values.size()) {
-//            throw std::runtime_error("Too many values provided");
-//        }
-//    }
-//
-//    // Устанавливаем значения для autoincrement колонок
-//    for (const auto& col : columns) {
-//        if (col.is_autoincrement) {
-//            values[col.name] = max_id + 1;
-//        }
-//    }
-//
-//    // Проверяем обязательные колонки и устанавливаем значения по умолчанию
-//    for (const auto& col : columns) {
-//        if (values.find(col.name) == values.end()) {
-//            if (col.is_autoincrement) {
-//                continue;  // autoincrement уже обработан выше
-//            }
-//            if (!std::holds_alternative<std::monostate>(col.default_value)) {
-//                values[col.name] = col.default_value;
-//            } else {
-//                throw std::runtime_error("Missing value for column '" + col.name + "'");
-//            }
-//        }
-//    }
-//
-//    // Проверяем уникальные значения
-//    for (const auto& col : columns) {
-//        if (col.is_unique && values.find(col.name) != values.end()) {
-//            for (const auto& row : table->get_rows()) {
-//                size_t col_idx = std::distance(columns.begin(),
-//                                               std::find_if(columns.begin(), columns.end(),
-//                                                            [&](const Column& c) { return c.name == col.name; }));
-//
-//                if (row[col_idx] == values[col.name]) {
-//                    throw std::runtime_error("Unique constraint violation for column '" + col.name + "'");
-//                }
-//            }
-//        }
-//    }
-//
-//    // Вставляем строку
-//    table->insert_row(values);
-//    return Result{};
-//}
-Result InsertCommand::execute(Database& db, const std::vector<Token>& tokens, const std::string& query) {
+Result InsertCommand::execute(Database& db, const std::vector<std::string>& tokens, const std::string& query) {
     std::cout << "Executing Insert command:\n";
 
     auto [success, data] = parseInsertQuery(query);
@@ -265,7 +155,6 @@ Result InsertCommand::execute(Database& db, const std::vector<Token>& tokens, co
     std::unordered_map<std::string, DataType::Value> values;
 
     if (data.is_named_format) {
-        // Именованный формат (name = value)
         for (const auto& [name, value_str] : data.values) {
             auto it = std::find_if(columns.begin(), columns.end(),
                                    [&name](const Column& col) { return col.name == name; });
@@ -279,11 +168,9 @@ Result InsertCommand::execute(Database& db, const std::vector<Token>& tokens, co
             }
         }
     } else {
-        // Простой формат (value1, value2, value3)
         size_t value_idx = 0;
         size_t col_idx = 0;
 
-        // Пропускаем autoincrement колонки
         while (col_idx < columns.size() && columns[col_idx].is_autoincrement) {
             col_idx++;
         }
@@ -301,20 +188,17 @@ Result InsertCommand::execute(Database& db, const std::vector<Token>& tokens, co
         }
     }
 
-    // Устанавливаем значения для autoincrement колонок
     for (const auto& col : columns) {
         if (col.is_autoincrement) {
             values[col.name] = table->get_auto_increment_value();
-            // Увеличиваем значение auto_increment после использования
             table->increment_auto_increment();
         }
     }
 
-    // Проверяем обязательные колонки и устанавливаем значения по умолчанию
     for (const auto& col : columns) {
         if (values.find(col.name) == values.end()) {
             if (col.is_autoincrement) {
-                continue;  // autoincrement уже обработан выше
+                continue;
             }
             if (!std::holds_alternative<std::monostate>(col.default_value)) {
                 values[col.name] = col.default_value;
@@ -324,7 +208,6 @@ Result InsertCommand::execute(Database& db, const std::vector<Token>& tokens, co
         }
     }
 
-    // Проверяем уникальные значения
     for (const auto& col : columns) {
         if (col.is_unique && values.find(col.name) != values.end()) {
             for (const auto& row : table->get_rows()) {

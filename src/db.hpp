@@ -30,6 +30,10 @@ public:
 private:
     friend class CreateTableCommand;
     friend class InsertCommand;
+    friend class SelectCommand;
+    friend class UpdateCommand;
+    friend class DeleteCommand;
+    friend class CreateIndexCommand;
     friend class Command;
 
     void createTable(const std::string& name, const std::vector<Column>& columns);

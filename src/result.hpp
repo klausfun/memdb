@@ -6,6 +6,18 @@
 
 class Result {
 public:
+    Result () = default;
+
+    explicit Result(std::vector<std::vector<DataType::Value>> result_rows)
+            : success(true)
+            , rows(std::move(result_rows))
+    {}
+
+    explicit Result(const std::string& error_message)
+            : success(false)
+            , error(error_message)
+    {}
+
     bool is_ok() const;
     std::string get_error();
 
