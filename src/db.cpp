@@ -55,7 +55,6 @@ void Database::save_to_json(const std::string& filename) {
     for (const auto& [table_name, table] : tables) {
         json table_json;
 
-        // Сохраняем колонки
         json columns_json;
         for (const auto& col : table->get_columns()) {
             json column;
@@ -81,7 +80,6 @@ void Database::save_to_json(const std::string& filename) {
         }
         table_json["columns"] = columns_json;
 
-        // Сохраняем данные
         json rows_json;
         for (const auto& row : table->get_rows()) {
             json row_json;

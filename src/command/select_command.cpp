@@ -94,7 +94,6 @@ Result SelectCommand::execute(Database& db, const std::vector<std::string>& toke
             return Result("Table '" + data.table_name + "' not found");
         }
 
-        // Проверяем существование колонок
         for (const auto& col_name : data.columns) {
             if (col_name != "*" && !table->column_exists(col_name)) {
                 return Result("Column not found: " + col_name);
@@ -102,8 +101,7 @@ Result SelectCommand::execute(Database& db, const std::vector<std::string>& toke
         }
 
         std::vector<std::vector<DataType::Value>> result_rows;
-        
-        // Если условие пустое, выбираем все строки
+
         if (data.condition.empty()) {
             for (const auto& row : table->get_rows()) {
                 std::vector<DataType::Value> result_row;
@@ -121,7 +119,6 @@ Result SelectCommand::execute(Database& db, const std::vector<std::string>& toke
             Tokenizer tokenizer;
             std::vector<std::string> condition_tokens = tokenizer.tokenize(data.condition);
 
-            // Проверяем существование колонок в условии
             for (const auto& token : condition_tokens) {
                 if (std::isalpha(token[0]) && token != "true" && token != "false" && 
                     !table->column_exists(token)) {
