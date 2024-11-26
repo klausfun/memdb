@@ -11,7 +11,6 @@ public:
             std::monostate,
             int32_t,
             std::string,
-            std::vector<uint8_t>,
             bool
     >;
 

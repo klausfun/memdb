@@ -12,19 +12,18 @@ std::pair<bool, std::vector<Column>> CreateTableCommand::parseCreateTableQuery(c
     );
 
     const std::regex columnPattern(
-            R"(\s*(?:\{\s*((?:key|unique|autoincrement)(?:\s*,\s*(?:key|unique|autoincrement))*)\s*\})?\s*)"  // изменили группу атрибутов
+            R"(\s*(?:\{\s*((?:key|unique|autoincrement)(?:\s*,\s*(?:key|unique|autoincrement))*)\s*\})?\s*)"
             R"(([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*)"
             R"((int32|bool|string(?:\s*\[\s*(\d+)\s*\])?|bytes(?:\s*\[\s*(\d+)\s*\])?)\s*)"
-            R"((?:=\s*(true|false|\d+|"[^"]*"|[^,\s)]+))?\s*)"
+            R"((?:=\s*((?:true|false|\d+|"[^"]*"|0x[0-9A-Fa-f]+))\s*)?\s*)"
     );
 
     std::smatch matches;
     if (!std::regex_match(query, matches, createTablePattern)) {
-        std::cout << "Failed to match create table pattern\n";
         return {false, {}};
     }
 
-    std::string columnsStr = matches[2];
+    std::string columnsStr = matches[2].str();
     std::vector<Column> columns;
 
     std::vector<std::string> columnDefs;
@@ -49,7 +48,6 @@ std::pair<bool, std::vector<Column>> CreateTableCommand::parseCreateTableQuery(c
     for (const auto& columnDef : columnDefs) {
         std::smatch columnMatches;
         if (!std::regex_match(columnDef, columnMatches, columnPattern)) {
-            std::cout << "Failed to match column pattern\n";
             return {false, {}};
         }
 
@@ -69,10 +67,17 @@ std::pair<bool, std::vector<Column>> CreateTableCommand::parseCreateTableQuery(c
                 if (attr == "key") column.is_key = true;
                 else if (attr == "autoincrement") column.is_autoincrement = true;
                 else if (attr == "unique") column.is_unique = true;
+                else return {false, {}};
             }
         }
 
         column.name = columnMatches[2].str();
+
+        for (const auto& existing : columns) {
+            if (existing.name == column.name) {
+                return {false, {}};
+            }
+        }
 
         std::string typeStr = columnMatches[3].str();
         if (typeStr == "int32") {
@@ -93,22 +98,69 @@ std::pair<bool, std::vector<Column>> CreateTableCommand::parseCreateTableQuery(c
                 column.size = std::stoul(columnMatches[5].str());
             }
         }
+        else {
+            return {false, {}};
+        }
+
+        if (column.is_autoincrement && column.type.getType() != DataType::Type::INT32) {
+            return {false, {}};
+        }
 
         if (columnMatches[6].matched) {
+            if (column.is_autoincrement) {
+                return {false, {}};
+            }
+
             std::string defaultVal = columnMatches[6].str();
             try {
-                if (column.type.getType() == DataType::Type::BOOLEAN) {
-                    column.default_value = defaultVal == "true";
-                } else if (column.type.getType() == DataType::Type::INT32) {
-                    column.default_value = std::stoi(defaultVal);
-                } else if (column.type.getType() == DataType::Type::STRING) {
-                    column.default_value = defaultVal;
-                } else if (column.type.getType() == DataType::Type::BYTES) {
-                    std::vector<uint8_t> bytes(defaultVal.begin(), defaultVal.end());
-                    column.default_value = bytes;
+                switch (column.type.getType()) {
+                    case DataType::Type::BOOLEAN:
+                        if (defaultVal != "true" && defaultVal != "false") {
+                            return {false, {}};
+                        }
+                        column.default_value = (defaultVal == "true");
+                        break;
+
+                    case DataType::Type::INT32:
+                        column.default_value = std::stoi(defaultVal);
+                        break;
+
+                    case DataType::Type::STRING: {
+                        if (defaultVal.size() < 2 || defaultVal.front() != '"' || defaultVal.back() != '"') {
+                            return {false, {}};
+                        }
+                        std::string str = defaultVal.substr(1, defaultVal.length() - 2);
+                        if (str.length() > column.size) {
+                            return {false, {}};
+                        }
+                        column.default_value = defaultVal;
+                        break;
+                    }
+
+                    case DataType::Type::BYTES: {
+                        if (defaultVal.substr(0, 2) != "0x") {
+                            return {false, {}};
+                        }
+                        std::string hex = defaultVal.substr(2);
+                        hex.erase(std::remove_if(hex.begin(), hex.end(), ::isspace), hex.end());
+
+                        if (!std::all_of(hex.begin(), hex.end(), [](char c) {
+                            return (c >= '0' && c <= '9') || 
+                                   (c >= 'a' && c <= 'f') || 
+                                   (c >= 'A' && c <= 'F');
+                        })) {
+                            return {false, {}};
+                        }
+
+                        if (hex.length() > column.size) {
+                            return {false, {}};
+                        }
+
+                        column.default_value = defaultVal;
+                        break;
+                    }
                 }
             } catch (const std::exception& e) {
-                std::cout << "Invalid default value\n";
                 return {false, {}};
             }
         }
@@ -116,15 +168,17 @@ std::pair<bool, std::vector<Column>> CreateTableCommand::parseCreateTableQuery(c
         columns.push_back(column);
     }
 
+    if (columns.empty()) {
+        return {false, {}};
+    }
+
     return {true, columns};
 }
 
 Result CreateTableCommand::execute(Database& db, const std::vector<std::string>& tokens, const std::string& query) {
-    std::cout << "Executing Create Table command:\n" << std::endl;
-
     auto [success, columns] = parseCreateTableQuery(query);
     if (!success) {
-        throw std::runtime_error("Invalid CREATE TABLE syntax");
+        return Result("Invalid CREATE TABLE syntax");
     }
 
     std::string table_name = tokens[2];

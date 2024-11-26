@@ -23,6 +23,11 @@ public:
     bool calculate(const std::vector<std::string>& rpn_tokens,
                   const std::vector<DataType::Value>& row,
                   const std::vector<Column>& columns);
+
+    DataType::Value calculate_value(const std::vector<std::string>& rpn_tokens,
+                                  const std::vector<DataType::Value>& row,
+                                  const std::vector<Column>& columns);
+
 private:
     bool isNumber(const std::string& token);
     DataType::Value calculateUnary(const std::string& op, const DataType::Value& val);

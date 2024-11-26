@@ -7,6 +7,5 @@
 #include "../db.hpp"
 
 Result CreateIndexCommand::execute(Database& db, const std::vector<std::string>& tokens, const std::string& query) {
-    std::cout << "Executing Create Index command:\n" << std::endl;
     return Result{};
 }

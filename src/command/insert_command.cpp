@@ -13,7 +13,6 @@ std::pair<bool, InsertData> InsertCommand::parseInsertQuery(const std::string& q
 
     std::smatch matches;
     if (!std::regex_match(query, matches, insertPattern)) {
-        std::cout << "Failed to match insert pattern\n";
         return {false, {}};
     }
 
@@ -44,7 +43,7 @@ std::pair<bool, InsertData> InsertCommand::parseInsertQuery(const std::string& q
             currentPart += c;
         }
     }
-    if (!currentPart.empty()) {
+    if (!currentPart.empty() || !valueParts.empty()) {
         valueParts.push_back(currentPart);
     }
 
@@ -65,12 +64,13 @@ std::pair<bool, InsertData> InsertCommand::parseInsertQuery(const std::string& q
         trimmed.erase(0, trimmed.find_first_not_of(" \t\n\r"));
         trimmed.erase(trimmed.find_last_not_of(" \t\n\r") + 1);
 
-        if (trimmed.empty()) continue;
-
         if (data.is_named_format) {
+            if (trimmed.empty()) {
+                continue;
+            }
+
             size_t equalsPos = trimmed.find('=');
             if (equalsPos == std::string::npos) {
-                std::cout << "Expected '=' in named format: " << trimmed << "\n";
                 return {false, {}};
             }
 
@@ -97,9 +97,6 @@ std::pair<bool, InsertData> InsertCommand::parseInsertQuery(const std::string& q
 
 DataType::Value InsertCommand::parseValue(const std::string& value_str, const DataType& type) {
     try {
-        std::cout << "Parsing value: '" << value_str << "' as type: "
-                  << static_cast<int>(type.getType()) << std::endl;
-
         switch (type.getType()) {
             case DataType::Type::INT32: {
                 return std::stoi(value_str);
@@ -113,21 +110,27 @@ DataType::Value InsertCommand::parseValue(const std::string& value_str, const Da
 
             case DataType::Type::STRING: {
                 if (value_str.size() >= 2 && value_str.front() == '"' && value_str.back() == '"') {
-                    return value_str.substr(1, value_str.size() - 2);
+                    return value_str;
                 }
-                return value_str;
+                return "\"" + value_str + "\"";
             }
 
             case DataType::Type::BYTES: {
-                std::cout << "Parsing bytes value: '" << value_str << "'\n";
                 if (value_str.substr(0, 2) != "0x") {
                     throw std::runtime_error("Bytes value must start with 0x");
                 }
-                std::vector<uint8_t> bytes;
-                for (size_t i = 2; i < value_str.size(); i += 2) {
-                    bytes.push_back(std::stoi(value_str.substr(i, 2), nullptr, 16));
+                std::string hex = value_str.substr(2);
+                hex.erase(std::remove_if(hex.begin(), hex.end(), ::isspace), hex.end());
+
+                if (!std::all_of(hex.begin(), hex.end(), [](char c) {
+                    return (c >= '0' && c <= '9') || 
+                           (c >= 'a' && c <= 'f') || 
+                           (c >= 'A' && c <= 'F');
+                })) {
+                    throw std::runtime_error("Invalid hex characters");
                 }
-                return bytes;
+
+                return value_str;
             }
 
             default:
@@ -139,89 +142,105 @@ DataType::Value InsertCommand::parseValue(const std::string& value_str, const Da
 }
 
 Result InsertCommand::execute(Database& db, const std::vector<std::string>& tokens, const std::string& query) {
-    std::cout << "Executing Insert command:\n";
-
-    auto [success, data] = parseInsertQuery(query);
-    if (!success) {
-        throw std::runtime_error("Invalid INSERT syntax");
-    }
-
-    auto table = db.getTable(data.table_name);
-    if (!table) {
-        throw std::runtime_error("Table '" + data.table_name + "' not found");
-    }
-
-    const auto& columns = table->get_columns();
-    std::unordered_map<std::string, DataType::Value> values;
-
-    if (data.is_named_format) {
-        for (const auto& [name, value_str] : data.values) {
-            auto it = std::find_if(columns.begin(), columns.end(),
-                                   [&name](const Column& col) { return col.name == name; });
-
-            if (it == columns.end()) {
-                throw std::runtime_error("Column '" + name + "' not found");
-            }
-
-            if (!it->is_autoincrement) {
-                values[name] = parseValue(value_str, it->type);
-            }
-        }
-    } else {
-        size_t value_idx = 0;
-        size_t col_idx = 0;
-
-        while (col_idx < columns.size() && columns[col_idx].is_autoincrement) {
-            col_idx++;
+    try {
+        auto [success, data] = parseInsertQuery(query);
+        if (!success) {
+            return Result("Invalid INSERT syntax");
         }
 
-        while (value_idx < data.values.size() && col_idx < columns.size()) {
-            const auto& value_str = data.values[value_idx].second;
-            if (!value_str.empty()) {
-                values[columns[col_idx].name] = parseValue(value_str, columns[col_idx].type);
-            }
-            value_idx++;
+        auto table = db.getTable(data.table_name);
+        if (!table) {
+            return Result("Table '" + data.table_name + "' not found");
+        }
 
-            do {
+        const auto& columns = table->get_columns();
+        std::unordered_map<std::string, DataType::Value> values;
+
+        if (data.is_named_format) {
+            for (const auto& [name, value_str] : data.values) {
+                auto it = std::find_if(columns.begin(), columns.end(),
+                                     [&name](const Column& col) { return col.name == name; });
+
+                if (it == columns.end()) {
+                    return Result("Column '" + name + "' not found");
+                }
+
+                if (!it->is_autoincrement) {
+                    values[name] = parseValue(value_str, it->type);
+                }
+            }
+        } else {
+            size_t value_idx = 0;
+            size_t col_idx = 0;
+
+            while (col_idx < columns.size()) {
+                const auto& current_column = columns[col_idx];
+                std::string value_str;
+
+                if (value_idx < data.values.size()) {
+                    value_str = data.values[value_idx].second;
+                }
+
+                if (!current_column.is_autoincrement) {
+                    if (!value_str.empty()) {
+                        try {
+                            values[current_column.name] = parseValue(value_str, current_column.type);
+                        } catch (const std::exception& e) {
+                            throw std::runtime_error("Error parsing value for column '" +
+                                                     current_column.name + "': " + e.what());
+                        }
+                    } else if (!std::holds_alternative<std::monostate>(current_column.default_value)) {
+                        values[current_column.name] = current_column.default_value;
+                    } else {
+                        throw std::runtime_error("Missing value for column '" + current_column.name +
+                                                 "' and no default value specified");
+                    }
+                }
+
+                value_idx++;
                 col_idx++;
-            } while (col_idx < columns.size() && columns[col_idx].is_autoincrement);
+            }
         }
-    }
 
-    for (const auto& col : columns) {
-        if (col.is_autoincrement) {
-            values[col.name] = table->get_auto_increment_value();
-            table->increment_auto_increment();
-        }
-    }
-
-    for (const auto& col : columns) {
-        if (values.find(col.name) == values.end()) {
+        for (const auto& col : columns) {
             if (col.is_autoincrement) {
-                continue;
-            }
-            if (!std::holds_alternative<std::monostate>(col.default_value)) {
-                values[col.name] = col.default_value;
-            } else {
-                throw std::runtime_error("Missing value for column '" + col.name + "'");
+                values[col.name] = table->get_auto_increment_value();
+                table->increment_auto_increment();
             }
         }
-    }
 
-    for (const auto& col : columns) {
-        if (col.is_unique && values.find(col.name) != values.end()) {
-            for (const auto& row : table->get_rows()) {
-                size_t col_idx = std::distance(columns.begin(),
-                                               std::find_if(columns.begin(), columns.end(),
-                                                            [&](const Column& c) { return c.name == col.name; }));
-
-                if (row[col_idx] == values[col.name]) {
-                    throw std::runtime_error("Unique constraint violation for column '" + col.name + "'");
+        for (const auto& col : columns) {
+            if (values.find(col.name) == values.end()) {
+                if (col.is_autoincrement) {
+                    continue;
+                }
+                if (!std::holds_alternative<std::monostate>(col.default_value)) {
+                    values[col.name] = col.default_value;
+                } else {
+                    throw std::runtime_error("Missing value for column '" + col.name + "'");
                 }
             }
         }
-    }
 
-    table->insert_row(values);
-    return Result{};
+        for (const auto& col : columns) {
+            if (col.is_unique && values.find(col.name) != values.end()) {
+                for (const auto& row : table->get_rows()) {
+                    size_t col_idx = std::distance(columns.begin(),
+                                                   std::find_if(columns.begin(), columns.end(),
+                                                                [&](const Column& c) { return c.name == col.name; }));
+
+                    if (row[col_idx] == values[col.name]) {
+                        throw std::runtime_error("Unique constraint violation for column '" + col.name + "'");
+                    }
+                }
+            }
+        }
+
+        table->insert_row(values);
+        return Result{};
+    } catch (const std::runtime_error& e) {
+        return Result(e.what());
+    } catch (const std::exception& e) {
+        return Result("Unexpected error: " + std::string(e.what()));
+    }
 }

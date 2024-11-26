@@ -15,7 +15,6 @@ std::pair<bool, SelectData> SelectCommand::parseSelectQuery(const std::string& q
 
     std::smatch matches;
     if (!std::regex_match(query, matches, selectPattern)) {
-        std::cout << "Failed to match select pattern\n";
         return {false, {}};
     }
 
@@ -35,7 +34,6 @@ std::pair<bool, SelectData> SelectCommand::parseSelectQuery(const std::string& q
         }
         else if (c == ',' && !in_quotes) {
             if (current_column.empty()) {
-                std::cout << "Empty column name\n";
                 return {false, {}};
             }
 
@@ -48,7 +46,6 @@ std::pair<bool, SelectData> SelectCommand::parseSelectQuery(const std::string& q
             if (!current_column.empty()) {
                 current_column = trim(current_column);
                 if (expect_comma) {
-                    std::cout << "Expected comma between columns\n";
                     return {false, {}};
                 }
                 data.columns.push_back(current_column);
@@ -58,7 +55,6 @@ std::pair<bool, SelectData> SelectCommand::parseSelectQuery(const std::string& q
         }
         else {
             if (expect_comma && !std::isspace(c)) {
-                std::cout << "Expected comma between columns\n";
                 return {false, {}};
             }
             current_column += c;
@@ -68,14 +64,12 @@ std::pair<bool, SelectData> SelectCommand::parseSelectQuery(const std::string& q
     if (!current_column.empty()) {
         current_column = trim(current_column);
         if (expect_comma) {
-            std::cout << "Expected comma between columns\n";
             return {false, {}};
         }
         data.columns.push_back(current_column);
     }
 
     if (data.columns.empty()) {
-        std::cout << "No columns specified\n";
         return {false, {}};
     }
 
@@ -89,43 +83,98 @@ std::pair<bool, SelectData> SelectCommand::parseSelectQuery(const std::string& q
 }
 
 Result SelectCommand::execute(Database& db, const std::vector<std::string>& tokens, const std::string& query) {
-    std::cout << "Executing SELECT command:\n";
-
-    auto [success, data] = parseSelectQuery(query);
-    if (!success) {
-        throw std::runtime_error("Invalid SELECT syntax");
-    }
-
-    auto table = db.getTable(data.table_name);
-    if (!table) {
-        throw std::runtime_error("Table '" + data.table_name + "' not found");
-    }
-
-    Tokenizer tokenizer;
-    std::vector<std::string> condition_tokens = tokenizer.tokenize(data.condition);
-
-    RPNConverter converter;
-    std::vector<std::string> rpn_tokens = converter.convert(condition_tokens);
-
-    RPNCalculator calculator;
-
-    std::vector<std::vector<DataType::Value>> result_rows;
-    for (const auto& row : table->get_rows()) {
-        bool include_row = true;
-
-        if (!rpn_tokens.empty()) {
-            include_row = calculator.calculate(rpn_tokens, row, table->get_columns());
+    try {
+        auto [success, data] = parseSelectQuery(query);
+        if (!success) {
+            return Result("Invalid SELECT syntax");
         }
 
-        if (include_row) {
-            std::vector<DataType::Value> result_row;
-            for (const auto& col_name : data.columns) {
-                size_t idx = findColumnIndex(col_name, table->get_columns());
-                result_row.push_back(row[idx]);
+        auto table = db.getTable(data.table_name);
+        if (!table) {
+            return Result("Table '" + data.table_name + "' not found");
+        }
+
+        // Проверяем существование колонок
+        for (const auto& col_name : data.columns) {
+            if (col_name != "*" && !table->column_exists(col_name)) {
+                return Result("Column not found: " + col_name);
             }
-            result_rows.push_back(result_row);
         }
-    }
 
-    return Result{result_rows};
+        std::vector<std::vector<DataType::Value>> result_rows;
+        
+        // Если условие пустое, выбираем все строки
+        if (data.condition.empty()) {
+            for (const auto& row : table->get_rows()) {
+                std::vector<DataType::Value> result_row;
+                if (data.columns[0] == "*") {
+                    result_row = row;
+                } else {
+                    for (const auto& col_name : data.columns) {
+                        size_t idx = findColumnIndex(col_name, table->get_columns());
+                        result_row.push_back(row[idx]);
+                    }
+                }
+                result_rows.push_back(result_row);
+            }
+        } else {
+            Tokenizer tokenizer;
+            std::vector<std::string> condition_tokens = tokenizer.tokenize(data.condition);
+
+            // Проверяем существование колонок в условии
+            for (const auto& token : condition_tokens) {
+                if (std::isalpha(token[0]) && token != "true" && token != "false" && 
+                    !table->column_exists(token)) {
+                    return Result("Column not found in condition: " + token);
+                }
+            }
+
+            RPNConverter converter;
+            std::vector<std::string> rpn_tokens = converter.convert(condition_tokens);
+            RPNCalculator calculator;
+
+            for (const auto& row : table->get_rows()) {
+                bool include_row;
+                try {
+                    include_row = calculator.calculate(rpn_tokens, row, table->get_columns());
+                } catch (const std::exception& e) {
+                    return Result("Error evaluating condition: " + std::string(e.what()));
+                }
+                
+                if (include_row) {
+                    std::vector<DataType::Value> result_row;
+                    if (data.columns[0] == "*") {
+                        result_row = row;
+                    } else {
+                        for (const auto& col_name : data.columns) {
+                            size_t idx = findColumnIndex(col_name, table->get_columns());
+                            const auto& col = table->get_columns()[idx];
+                            const auto& value = row[idx];
+                            
+                            if (std::holds_alternative<int32_t>(value) && col.type.getType() != DataType::Type::INT32) {
+                                return Result("Type mismatch for column: " + col_name);
+                            }
+                            if (std::holds_alternative<bool>(value) && col.type.getType() != DataType::Type::BOOLEAN) {
+                                return Result("Type mismatch for column: " + col_name);
+                            }
+                            if (std::holds_alternative<std::string>(value) && 
+                                col.type.getType() != DataType::Type::STRING && 
+                                col.type.getType() != DataType::Type::BYTES) {
+                                return Result("Type mismatch for column: " + col_name);
+                            }
+                            
+                            result_row.push_back(value);
+                        }
+                    }
+                    result_rows.push_back(result_row);
+                }
+            }
+        }
+
+        return Result(result_rows);
+    } catch (const std::runtime_error& e) {
+        return Result(e.what());
+    } catch (const std::exception& e) {
+        return Result("Unexpected error: " + std::string(e.what()));
+    }
 }

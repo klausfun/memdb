@@ -38,6 +38,8 @@ public:
     bool validate_row(const std::unordered_map<std::string, DataType::Value>& values) const;
     bool column_exists(const std::string& name) const;
 
+    size_t get_column_index(const std::string& name) const;
+
 private:
     std::string name_;
     std::vector<Column> columns_;
@@ -45,6 +47,5 @@ private:
 //    std::unordered_map<std::string, Index> indexes_;
     int32_t auto_increment_value{1};
 
-    size_t get_column_index(const std::string& name) const;
     DataType::Value get_default_value(const Column& column) const;
 };

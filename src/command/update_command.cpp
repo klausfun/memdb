@@ -47,74 +47,96 @@ std::pair<bool, UpdateData> UpdateCommand::parseUpdateQuery(const std::string& q
 }
 
 Result UpdateCommand::execute(Database& db, const std::vector<std::string>& tokens, const std::string& query) {
-    std::cout << "Executing Update command:\n" << std::endl;
+    try {
+        auto [success, data] = parseUpdateQuery(query);
+        if (!success) {
+            return Result("Invalid UPDATE syntax");
+        }
 
-    auto [success, data] = parseUpdateQuery(query);
-    if (!success) {
-        throw std::runtime_error("Invalid UPDATE syntax");
-    }
+        auto table = db.getTable(data.table_name);
+        if (!table) {
+            return Result("Table '" + data.table_name + "' not found");
+        }
 
-    auto table = db.getTable(data.table_name);
-    if (!table) {
-        throw std::runtime_error("Table '" + data.table_name + "' not found");
-    }
+        Tokenizer tokenizer;
+        std::vector<std::string> condition_tokens = tokenizer.tokenize(data.condition);
 
-    Tokenizer tokenizer;
-    std::vector<std::string> condition_tokens = tokenizer.tokenize(data.condition);
+        RPNConverter converter;
+        std::vector<std::string> rpn_tokens = converter.convert(condition_tokens);
 
-    RPNConverter converter;
-    std::vector<std::string> rpn_tokens = converter.convert(condition_tokens);
+        RPNCalculator calculator;
 
-    RPNCalculator calculator;
+        size_t updated = 0;
+        size_t row_idx = 0;
+        for (auto& row : table->get_rows()) {
+            if (calculator.calculate(rpn_tokens, row, table->get_columns())) {
+                for (const auto& [col, value_str] : data.column_values) {
+                    size_t col_idx = findColumnIndex(col, table->get_columns());
+                    const auto& column = table->get_columns()[col_idx];
 
-    size_t updated = 0;
-    size_t row_idx = 0;
-    for (auto& row : table->get_rows()) {
-        if (calculator.calculate(rpn_tokens, row, table->get_columns())) {
-            for (const auto& [col, value_str] : data.column_values) {
-                size_t col_idx = findColumnIndex(col, table->get_columns());
-                const auto& column = table->get_columns()[col_idx];
+                    DataType::Value new_value;
 
-                DataType::Value new_value;
+                    if (value_str.find(col) != std::string::npos) {
 
-                if (column.type.getType() == DataType::Type::INT32) {
-                    new_value = std::stoi(value_str);
-                } else if (column.type.getType() == DataType::Type::BOOLEAN) {
-                    new_value = (value_str == "true");
-                } else if (column.type.getType() == DataType::Type::STRING) {
-                    if (value_str.front() == '\"' && value_str.back() == '\"') {
-                        new_value = value_str.substr(1, value_str.length() - 2);
-                    } else {
-                        new_value = value_str;
-                    }
-                } else if (column.type.getType() == DataType::Type::BYTES) {
-                    if (value_str.substr(0, 2) != "0x") {
-                        throw std::runtime_error("Invalid bytes format");
-                    }
+                        auto current_value = row[col_idx];
 
-                    std::vector<uint8_t> bytes;
-                    std::string hex = value_str.substr(2);
-                    for (size_t i = 0; i < hex.length(); i += 2) {
-                        if (i + 1 >= hex.length()) {
-                            throw std::runtime_error("Invalid hex string length");
+                        std::string modified_expr = value_str;
+                        if (std::holds_alternative<int32_t>(current_value)) {
+                            modified_expr = std::regex_replace(modified_expr, std::regex(col),
+                                std::to_string(std::get<int32_t>(current_value)));
+                        } else if (std::holds_alternative<std::string>(current_value)) {
+                            modified_expr = std::regex_replace(modified_expr, std::regex(col),
+                                std::get<std::string>(current_value));
                         }
 
-                        std::string byte = hex.substr(i, 2);
-                        bytes.push_back(std::stoi(byte, nullptr, 16));
+                        std::vector<std::string> expr_tokens = tokenizer.tokenize(modified_expr);
+                        std::vector<std::string> rpn_expr = converter.convert(expr_tokens);
+
+                        new_value = calculator.calculate_value(rpn_expr, row, table->get_columns());
+                    } else {
+                        if (column.type.getType() == DataType::Type::INT32) {
+                            new_value = std::stoi(value_str);
+                        } else if (column.type.getType() == DataType::Type::BOOLEAN) {
+                            new_value = (value_str == "true");
+                        } else if (column.type.getType() == DataType::Type::STRING) {
+                            if (value_str.front() == '\"' && value_str.back() == '\"') {
+                                new_value = value_str;
+                            } else {
+                                new_value = "\"" + value_str + "\"";
+                            }
+                        } else if (column.type.getType() == DataType::Type::BYTES) {
+                            if (value_str.substr(0, 2) != "0x") {
+                                return Result("Invalid bytes format");
+                            }
+                            std::string hex = value_str.substr(2);
+                            if (hex.length() % 2 != 0) {
+                                return Result("Invalid hex string length");
+                            }
+                            if (hex.length() / 2 > column.size) {
+                                return Result("Bytes value too long");
+                            }
+                            if (!std::all_of(hex.begin(), hex.end(), [](char c) {
+                                return (c >= '0' && c <= '9') ||
+                                       (c >= 'a' && c <= 'f') ||
+                                       (c >= 'A' && c <= 'F');
+                            })) {
+                                return Result("Invalid hex characters");
+                            }
+                            new_value = value_str;
+                        }
                     }
 
-                    new_value = bytes;
+                    table->update_value(row_idx, col_idx, new_value);
                 }
-                else {
-                    throw std::runtime_error("Unknown column type");
-                }
-
-                table->update_value(row_idx, col_idx, new_value);
+                updated++;
             }
-            updated++;
+            row_idx++;
         }
-        row_idx++;
-    }
 
-    return Result{};
+        return Result{};
+    } catch (const std::runtime_error& e) {
+        return Result(e.what());
+    } catch (const std::exception& e) {
+        return Result("Unexpected error: " + std::string(e.what()));
+    }
 }

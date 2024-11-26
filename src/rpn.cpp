@@ -135,29 +135,45 @@ DataType::Value RPNCalculator::calculateUnary(const std::string& op, const DataT
 
     if (op == "|") {
         if (std::holds_alternative<std::string>(val)) {
-            return static_cast<int32_t>(std::get<std::string>(val).length());
+            const auto& str = std::get<std::string>(val);
+            if (str.length() >= 2) {
+                if (str.substr(0, 2) == "0x") {
+                    return static_cast<int32_t>((str.length() - 2) / 2);
+                }
+                if (str.front() == '"' && str.back() == '"') {
+                    return static_cast<int32_t>(str.length() - 2);
+                }
+            }
+            return static_cast<int32_t>(str.length());
         }
-
-        if (std::holds_alternative<std::vector<uint8_t>>(val)) {
-            return static_cast<int32_t>(std::get<std::vector<uint8_t>>(val).size());
-        }
-
-        std::cerr << "Current type index: " << std::get<int32_t>(val) << std::endl;
-        std::cerr << "Current type index: " << val.index() << std::endl;
-        std::cerr << "Contains string: " << std::holds_alternative<std::string>(val) << std::endl;
-        std::cerr << "Contains bytes: " << std::holds_alternative<std::vector<uint8_t>>(val) << std::endl;
-        std::cerr << "Contains int: " << std::holds_alternative<int32_t>(val) << std::endl;
-        std::cerr << "Contains bool: " << std::holds_alternative<bool>(val) << std::endl;
-
         throw std::runtime_error("| operator requires string or bytes operand");
     }
 
     throw std::runtime_error("Unknown unary operator: " + op);
 }
 
-DataType::Value RPNCalculator::calculateBinary(const std::string &op, const DataType::Value &left,
-                                               const DataType::Value &right) {
-    if (op == "+" || op == "-" || op == "*" || op == "/" || op == "%") {
+DataType::Value RPNCalculator::calculateBinary(const std::string& op, const DataType::Value& left,
+                                             const DataType::Value& right) {
+    if (op == "+") {
+        if (std::holds_alternative<std::string>(left) && std::holds_alternative<std::string>(right)) {
+            const std::string& l = std::get<std::string>(left);
+            const std::string& r = std::get<std::string>(right);
+            
+            std::string result;
+            if (l.front() == '"' && l.back() == '"' && r.front() == '"' && r.back() == '"') {
+                result = l.substr(0, l.length() - 1) + r.substr(1);
+            } else {
+                result = l + r;
+            }
+            return result;
+        }
+        if (std::holds_alternative<int32_t>(left) && std::holds_alternative<int32_t>(right)) {
+            return std::get<int32_t>(left) + std::get<int32_t>(right);
+        }
+        throw std::runtime_error("Invalid operands for + operator");
+    }
+
+    if (op == "-" || op == "*" || op == "/" || op == "%") {
         if (!std::holds_alternative<int32_t>(left) || !std::holds_alternative<int32_t>(right)) {
             throw std::runtime_error("Arithmetic operations require numeric operands");
         }
@@ -165,7 +181,6 @@ DataType::Value RPNCalculator::calculateBinary(const std::string &op, const Data
         int32_t l = std::get<int32_t>(left);
         int32_t r = std::get<int32_t>(right);
 
-        if (op == "+") return l + r;
         if (op == "-") return l - r;
         if (op == "*") return l * r;
         if (op == "/") {
@@ -176,8 +191,6 @@ DataType::Value RPNCalculator::calculateBinary(const std::string &op, const Data
             if (r == 0) throw std::runtime_error("Modulo by zero");
             return l % r;
         }
-
-        throw std::runtime_error("Unknown arithmetic operator: " + op);
     }
 
     if (op == "<" || op == ">" || op == "<=" || op == ">=" || op == "=" || op == "!=") {
@@ -191,8 +204,8 @@ DataType::Value RPNCalculator::calculateBinary(const std::string &op, const Data
             if (op == ">=") return l >= r;
             if (op == "=") return l == r;
             if (op == "!=") return l != r;
-
-        } else if (std::holds_alternative<bool>(left) && std::holds_alternative<bool>(right)) {
+        } 
+        else if (std::holds_alternative<bool>(left) && std::holds_alternative<bool>(right)) {
             bool l = std::get<bool>(left);
             bool r = std::get<bool>(right);
 
@@ -202,22 +215,10 @@ DataType::Value RPNCalculator::calculateBinary(const std::string &op, const Data
             if (op == ">=") return l >= r;
             if (op == "=") return l == r;
             if (op == "!=") return l != r;
-
-        } else if (std::holds_alternative<std::string>(left) && std::holds_alternative<std::string>(right)) {
+        }
+        else if (std::holds_alternative<std::string>(left) && std::holds_alternative<std::string>(right)) {
             const std::string& l = std::get<std::string>(left);
             const std::string& r = std::get<std::string>(right);
-
-            if (op == "<") return l < r;
-            if (op == ">") return l > r;
-            if (op == "<=") return l <= r;
-            if (op == ">=") return l >= r;
-            if (op == "=") return l == r;
-            if (op == "!=") return l != r;
-
-        } else if ( std::holds_alternative<std::vector<uint8_t>>(left) &&
-                    std::holds_alternative<std::vector<uint8_t>>(right)) {
-            const auto& l = std::get<std::vector<uint8_t>>(left);
-            const auto& r = std::get<std::vector<uint8_t>>(right);
 
             if (op == "<") return l < r;
             if (op == ">") return l > r;
@@ -267,9 +268,6 @@ void printStack(const std::stack<DataType::Value>& stack) {
         else if (std::holds_alternative<std::string>(val)) {
             std::cerr << "'" << std::get<std::string>(val) << "'";
         }
-        else if (std::holds_alternative<std::vector<uint8_t>>(val)) {
-            std::cerr << "bytes[" << std::get<std::vector<uint8_t>>(val).size() << "]";
-        }
 
         temp_stack.pop();
         if (!temp_stack.empty()) {
@@ -306,19 +304,7 @@ bool RPNCalculator::calculate(const std::vector<std::string>& rpn_tokens,
                 stack.push(calculateBinary(token, left, right));
             }
         } else if (token.substr(0, 2) == "0x") {
-            std::vector<uint8_t> bytes;
-            std::string hex = token.substr(2);
-
-            for (size_t i = 0; i < hex.length(); i += 2) {
-                if (i + 1 >= hex.length()) {
-                    throw std::runtime_error("Invalid hex string length");
-                }
-
-                std::string byte = hex.substr(i, 2);
-                bytes.push_back(std::stoi(byte, nullptr, 16));
-            }
-
-            stack.push(bytes);
+            stack.push(token);
         } else if (isNumber(token)) {
             stack.push(std::stoi(token));
         }
@@ -345,5 +331,52 @@ bool RPNCalculator::calculate(const std::vector<std::string>& rpn_tokens,
         throw std::runtime_error("Expression must evaluate to boolean value");
     }
 
-    return std::get<bool>(result);;
+    return std::get<bool>(result);
+}
+
+DataType::Value RPNCalculator::calculate_value(const std::vector<std::string>& rpn_tokens,
+                                             const std::vector<DataType::Value>& row,
+                                             const std::vector<Column>& columns) {
+    std::stack<DataType::Value> stack;
+
+    for (const auto& token : rpn_tokens) {
+        if (isOperator(token)) {
+            if (token == "|" || token == "!") {
+                if (stack.empty()) {
+                    throw std::runtime_error("Invalid expression: not enough operands");
+                }
+                auto operand = stack.top();
+                stack.pop();
+                stack.push(calculateUnary(token, operand));
+            } else {
+                if (stack.size() < 2) {
+                    throw std::runtime_error("Invalid expression: not enough operands");
+                }
+                auto right = stack.top();
+                stack.pop();
+                auto left = stack.top();
+                stack.pop();
+                stack.push(calculateBinary(token, left, right));
+            }
+        } else if (token.substr(0, 2) == "0x") {
+            stack.push(token);
+        } else if (isNumber(token)) {
+            stack.push(std::stoi(token));
+        } else if (token == "true" || token == "false") {
+            stack.push(token == "true");
+        } else {
+            try {
+                size_t idx = findColumnIndex(token, columns);
+                stack.push(row[idx]);
+            } catch (const std::runtime_error&) {
+                stack.push(token);
+            }
+        }
+    }
+
+    if (stack.empty()) {
+        throw std::runtime_error("Invalid expression: empty result");
+    }
+
+    return stack.top();
 }

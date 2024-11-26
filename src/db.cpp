@@ -4,6 +4,7 @@
 #include <regex>
 #include "db.hpp"
 #include <fstream>
+#include <unordered_set>
 
 Database::Database() {
     command_registry.register_command("create table", []() {
@@ -31,6 +32,13 @@ void Database::createTable(const std::string& name, const std::vector<Column>& c
         throw std::runtime_error("Table '" + name + "' already exists");
     }
 
+    std::unordered_set<std::string> column_names;
+    for (const auto& col : columns) {
+        if (!column_names.insert(col.name).second) {
+            throw std::runtime_error("Duplicate column name: " + col.name);
+        }
+    }
+
     tables[name] = std::make_shared<Table>(name, columns);
 }
 
@@ -39,16 +47,15 @@ std::shared_ptr<Table> Database::getTable(const std::string& name) {
     if (it != tables.end()) {
         return it->second;
     }
-
     return nullptr;
 }
 
 void Database::save_to_json(const std::string& filename) {
     json j;
-
     for (const auto& [table_name, table] : tables) {
         json table_json;
 
+        // Сохраняем колонки
         json columns_json;
         for (const auto& col : table->get_columns()) {
             json column;
@@ -69,22 +76,12 @@ void Database::save_to_json(const std::string& filename) {
                 else if (std::holds_alternative<std::string>(col.default_value)) {
                     column["default_value"] = std::get<std::string>(col.default_value);
                 }
-                else if (std::holds_alternative<std::vector<uint8_t>>(col.default_value)) {
-                    const auto& bytes = std::get<std::vector<uint8_t>>(col.default_value);
-                    std::stringstream ss;
-                    ss << "0x";
-                    for (auto byte : bytes) {
-                        ss << std::hex << std::setw(2) << std::setfill('0')
-                           << static_cast<int>(byte);
-                    }
-                    column["default_value"] = ss.str();
-                }
             }
-
             columns_json.push_back(column);
         }
         table_json["columns"] = columns_json;
 
+        // Сохраняем данные
         json rows_json;
         for (const auto& row : table->get_rows()) {
             json row_json;
@@ -92,30 +89,21 @@ void Database::save_to_json(const std::string& filename) {
                 const auto& col = table->get_columns()[i];
                 const auto& value = row[i];
 
-                if (std::holds_alternative<int32_t>(value)) {
-                    row_json[col.name] = std::get<int32_t>(value);
-                }
-                else if (std::holds_alternative<bool>(value)) {
-                    row_json[col.name] = std::get<bool>(value);
-                }
-                else if (std::holds_alternative<std::string>(value)) {
-                    row_json[col.name] = std::get<std::string>(value);
-                }
-                else if (std::holds_alternative<std::vector<uint8_t>>(value)) {
-                    const auto& bytes = std::get<std::vector<uint8_t>>(value);
-                    std::stringstream ss;
-                    ss << "0x";
-                    for (auto byte : bytes) {
-                        ss << std::hex << std::setw(2) << std::setfill('0')
-                           << static_cast<int>(byte);
+                if (!std::holds_alternative<std::monostate>(value)) {
+                    if (std::holds_alternative<int32_t>(value)) {
+                        row_json[col.name] = std::get<int32_t>(value);
                     }
-                    row_json[col.name] = ss.str();
+                    else if (std::holds_alternative<bool>(value)) {
+                        row_json[col.name] = std::get<bool>(value);
+                    }
+                    else if (std::holds_alternative<std::string>(value)) {
+                        row_json[col.name] = std::get<std::string>(value);
+                    }
                 }
             }
             rows_json.push_back(row_json);
         }
         table_json["rows"] = rows_json;
-
         j[table_name] = table_json;
     }
 
@@ -150,20 +138,11 @@ void Database::load_from_json(const std::string& filename) {
                         col.default_value = col_json["default_value"].get<bool>();
                         break;
                     case DataType::Type::STRING:
+                    case DataType::Type::BYTES:
                         col.default_value = col_json["default_value"].get<std::string>();
                         break;
-                    case DataType::Type::BYTES: {
-                        std::string hex = col_json["default_value"];
-                        std::vector<uint8_t> bytes;
-                        for (size_t i = 2; i < hex.size(); i += 2) {
-                            bytes.push_back(std::stoi(hex.substr(i, 2), nullptr, 16));
-                        }
-                        col.default_value = bytes;
-                        break;
-                    }
                 }
             }
-
             columns.push_back(col);
         }
 
@@ -193,17 +172,9 @@ void Database::load_from_json(const std::string& filename) {
                             row.push_back(row_json[col.name].get<bool>());
                             break;
                         case DataType::Type::STRING:
+                        case DataType::Type::BYTES:
                             row.push_back(row_json[col.name].get<std::string>());
                             break;
-                        case DataType::Type::BYTES: {
-                            std::string hex = row_json[col.name];
-                            std::vector<uint8_t> bytes;
-                            for (size_t i = 2; i < hex.size(); i += 2) {
-                                bytes.push_back(std::stoi(hex.substr(i, 2), nullptr, 16));
-                            }
-                            row.push_back(bytes);
-                            break;
-                        }
                     }
                 } else {
                     row.push_back(std::monostate{});
@@ -227,32 +198,37 @@ std::string to_lower(const std::string& str) {
 }
 
 Result Database::execute(const std::string& query) {
-    Tokenizer tokenizer;
-    auto tokens = tokenizer.tokenize(query);
-    if (tokens.empty()) {
-        return Result("Empty query");
-    }
-
-    std::string keyword = to_lower(tokens[0]);
-    if (keyword == "create") {
-        if (tokens.size() > 1) {
-            if (to_lower(tokens[1]) == "table") {
-                keyword += " table";
-            } else if (to_lower(tokens[2]) == "index") {
-                keyword += " index";
-            } else {
-                std::cerr << "Error: Unsupported query type" << std::endl;
-                return Result{};
-            }
-        } else {
+    try {
+        Tokenizer tokenizer;
+        auto tokens = tokenizer.tokenize(query);
+        if (tokens.empty()) {
             return Result("Empty query");
         }
-    }
 
-    auto command = command_registry.get_command(keyword);
-    if (!command) {
-        return Result("Unknown command: " + keyword);
-    }
+        std::string keyword = to_lower(tokens[0]);
+        if (keyword == "create") {
+            if (tokens.size() > 1) {
+                if (to_lower(tokens[1]) == "table") {
+                    keyword += " table";
+                } else if (to_lower(tokens[2]) == "index") {
+                    keyword += " index";
+                } else {
+                    return Result("Unsupported query type");
+                }
+            } else {
+                return Result("Empty query");
+            }
+        }
 
-    return command->execute(*this, tokens, query);
+        auto command = command_registry.get_command(keyword);
+        if (!command) {
+            return Result("Unknown command: " + keyword);
+        }
+
+        return command->execute(*this, tokens, query);
+    } catch (const std::runtime_error& e) {
+        return Result(e.what());
+    } catch (const std::exception& e) {
+        return Result("Unexpected error: " + std::string(e.what()));
+    }
 }

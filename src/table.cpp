@@ -3,9 +3,23 @@
 #include <algorithm>
 
 Table::Table(const std::string& name, const std::vector<Column>& columns)
-    : name_(name), columns_(columns) {}
+    : name_(name), columns_(columns), auto_increment_value(0) {}
 
 void Table::insert_row(const std::unordered_map<std::string, DataType::Value>& values) {
+    for (size_t i = 0; i < columns_.size(); ++i) {
+        const auto& column = columns_[i];
+        if (column.is_unique || column.is_key) {
+            auto it = values.find(column.name);
+            if (it != values.end()) {
+                for (const auto& existing_row : rows_) {
+                    if (existing_row[i] == it->second) {
+                        throw std::runtime_error("Unique constraint violation for column: " + column.name);
+                    }
+                }
+            }
+        }
+    }
+
     std::vector<DataType::Value> row;
     row.reserve(columns_.size());
 
@@ -13,20 +27,69 @@ void Table::insert_row(const std::unordered_map<std::string, DataType::Value>& v
         auto it = values.find(column.name);
 
         if (it != values.end()) {
+            if (std::holds_alternative<std::string>(it->second)) {
+                const auto& str = std::get<std::string>(it->second);
+                if (column.type.getType() == DataType::Type::STRING) {
+                    if (str.length() > column.size) {
+                        throw std::runtime_error("String value too long for column: " + column.name);
+                    }
+                }
+                else if (column.type.getType() == DataType::Type::BYTES) {
+                    if (str.substr(0, 2) != "0x") {
+                        throw std::runtime_error("Invalid bytes format for column: " + column.name);
+                    }
+                    if ((str.length() - 2) / 2 > column.size) {
+                        throw std::runtime_error("Bytes value too long for column: " + column.name);
+                    }
+                }
+            }
             row.push_back(it->second);
-        } else if (column.is_autoincrement) {
-            row.push_back(auto_increment_value++);
-        } else if (!std::holds_alternative<std::monostate>(column.default_value)) {
+        } 
+        else if (column.is_autoincrement) {
+            row.push_back(auto_increment_value);
+            auto_increment_value++;
+        } 
+        else if (!std::holds_alternative<std::monostate>(column.default_value)) {
             row.push_back(column.default_value);
-        } else {
-            row.push_back(std::monostate{});
+        } 
+        else {
+            throw std::runtime_error("Missing value for column: " + column.name);
         }
     }
 
-    add_row(row);
+    rows_.push_back(row);
 }
 
 void Table::update_value(size_t row_idx, size_t col_idx, const DataType::Value& value) {
+    if (columns_[col_idx].is_unique || columns_[col_idx].is_key) {
+        for (size_t i = 0; i < rows_.size(); ++i) {
+            if (i != row_idx && rows_[i][col_idx] == value) {
+                throw std::runtime_error("Unique constraint violation for column: " + 
+                                       columns_[col_idx].name);
+            }
+        }
+    }
+
+    if (std::holds_alternative<std::string>(value)) {
+        const auto& str = std::get<std::string>(value);
+        if (columns_[col_idx].type.getType() == DataType::Type::STRING) {
+            if (str.length() > columns_[col_idx].size) {
+                throw std::runtime_error("String value too long for column: " + 
+                                       columns_[col_idx].name);
+            }
+        }
+        else if (columns_[col_idx].type.getType() == DataType::Type::BYTES) {
+            if (str.substr(0, 2) != "0x") {
+                throw std::runtime_error("Invalid bytes format for column: " + 
+                                       columns_[col_idx].name);
+            }
+            if ((str.length() - 2) / 2 > columns_[col_idx].size) {
+                throw std::runtime_error("Bytes value too long for column: " + 
+                                       columns_[col_idx].name);
+            }
+        }
+    }
+
     rows_[row_idx][col_idx] = value;
 }
 

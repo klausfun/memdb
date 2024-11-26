@@ -30,8 +30,6 @@ std::pair<bool, DeleteData> DeleteCommand::parseDeleteQuery(const std::string& q
 }
 
 Result DeleteCommand::execute(Database& db, const std::vector<std::string>& tokens, const std::string& query) {
-    std::cout << "Executing Delete command:\n";
-
     auto [success, data] = parseDeleteQuery(query);
     if (!success) {
         return Result("Invalid DELETE syntax");
